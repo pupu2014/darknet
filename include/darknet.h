@@ -414,6 +414,10 @@ struct layer {
     float *scales;
     float *scale_updates;
 
+    float *weights_ema;
+    float *biases_ema;
+    float *scales_ema;
+
     float *weights;
     float *weight_updates;
 
@@ -701,6 +705,7 @@ typedef struct network {
     float *delta_rolling_max;
     float *delta_rolling_avg;
     float *delta_rolling_std;
+    int weights_reject_freq;
     int equidistant_point;
     float badlabels_rejection_percentage;
     float num_sigmas_reject_badlabels;

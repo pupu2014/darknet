@@ -1155,6 +1155,7 @@ void parse_net_options(list *options, network *net)
     net->batch *= net->time_steps;  // mini_batch * time_steps
     net->subdivisions = subdivs;    // number of mini_batches
 
+    net->weights_reject_freq = option_find_int_quiet(options, "weights_reject_freq", 0);
     net->equidistant_point = option_find_int_quiet(options, "equidistant_point", 0);
     net->badlabels_rejection_percentage = option_find_float_quiet(options, "badlabels_rejection_percentage", 0);
     net->num_sigmas_reject_badlabels = option_find_float_quiet(options, "num_sigmas_reject_badlabels", 0);
@@ -1825,6 +1826,31 @@ void save_convolutional_weights(layer l, FILE *fp)
     //}
 }
 
+void save_convolutional_weights_ema(layer l, FILE *fp)
+{
+    if (l.binary) {
+        //save_convolutional_weights_binary(l, fp);
+        //return;
+    }
+#ifdef GPU
+    if (gpu_index >= 0) {
+        pull_convolutional_layer(l);
+    }
+#endif
+    int num = l.nweights;
+    fwrite(l.biases_ema, sizeof(float), l.n, fp);
+    if (l.batch_normalize) {
+        fwrite(l.scales_ema, sizeof(float), l.n, fp);
+        fwrite(l.rolling_mean, sizeof(float), l.n, fp);
+        fwrite(l.rolling_variance, sizeof(float), l.n, fp);
+    }
+    fwrite(l.weights_ema, sizeof(float), num, fp);
+    //if(l.adam){
+    //    fwrite(l.m, sizeof(float), num, fp);
+    //    fwrite(l.v, sizeof(float), num, fp);
+    //}
+}
+
 void save_batchnorm_weights(layer l, FILE *fp)
 {
 #ifdef GPU
@@ -1854,7 +1880,7 @@ void save_connected_weights(layer l, FILE *fp)
     }
 }
 
-void save_weights_upto(network net, char *filename, int cutoff)
+void save_weights_upto(network net, char *filename, int cutoff, int save_ema)
 {
 #ifdef GPU
     if(net.gpu_index >= 0){
@@ -1878,7 +1904,12 @@ void save_weights_upto(network net, char *filename, int cutoff)
     for(i = 0; i < net.n && i < cutoff; ++i){
         layer l = net.layers[i];
         if (l.type == CONVOLUTIONAL && l.share_layer == NULL) {
-            save_convolutional_weights(l, fp);
+            if (save_ema) {
+                save_convolutional_weights_ema(l, fp);
+            }
+            else {
+                save_convolutional_weights(l, fp);
+            }
         } if (l.type == SHORTCUT && l.nweights > 0) {
             save_shortcut_weights(l, fp);
         } if(l.type == CONNECTED){
@@ -1941,7 +1972,7 @@ void save_weights_upto(network net, char *filename, int cutoff)
 }
 void save_weights(network net, char *filename)
 {
-    save_weights_upto(net, filename, net.n);
+    save_weights_upto(net, filename, net.n, 0);
 }
 
 void transpose_matrix(float *a, int rows, int cols)
